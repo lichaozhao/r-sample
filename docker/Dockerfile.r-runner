@@ -1,0 +1,30 @@
+FROM r-base:4.3.1
+
+ARG CRAN_MIRROR=https://mirrors.tuna.tsinghua.edu.cn/CRAN
+ENV CRAN_MIRROR=${CRAN_MIRROR}
+
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        libcurl4-openssl-dev \
+        libxml2-dev \
+        libssl-dev \
+        libgit2-dev \
+        locales \
+        ca-certificates \
+        less \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen \
+    && locale-gen \
+    && update-locale LANG=en_US.UTF-8
+
+RUN echo "options(repos = c(CRAN='${CRAN_MIRROR}'))" >> /usr/local/lib/R/etc/Rprofile.site
+
+RUN R -q -e "install.packages(c('tidyverse','data.table','ggplot2','readr','dplyr','lubridate','jsonlite','httr','lintr'), dependencies = TRUE)"
+
+RUN useradd --create-home --shell /bin/bash runner
+WORKDIR /workspace
+RUN chown runner:runner /workspace
+USER runner
+
+CMD ["R"]
