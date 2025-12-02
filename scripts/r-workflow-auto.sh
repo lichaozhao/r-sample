@@ -73,12 +73,12 @@ append_note() {
     local iteration="$1" status="$2" details="$3" script_path="$4" check_report="$5" run_log="$6" validation_report="$7"
     {
         printf '## Iteration %s (%s)\n' "$iteration" "$(date --iso-8601=seconds)"
-        printf '- Status: %s\n' "$status"
-        printf '- Details: %s\n' "$details"
-        printf '- Script: %s\n' "${script_path:-n/a}"
-        printf '- Check report: %s\n' "${check_report:-n/a}"
-        printf '- Run log: %s\n' "${run_log:-n/a}"
-        printf '- Validation: %s\n\n' "${validation_report:-n/a}"
+        printf -- '- Status: %s\n' "$status"
+        printf -- '- Details: %s\n' "$details"
+        printf -- '- Script: %s\n' "${script_path:-n/a}"
+        printf -- '- Check report: %s\n' "${check_report:-n/a}"
+        printf -- '- Run log: %s\n' "${run_log:-n/a}"
+        printf -- '- Validation: %s\n\n' "${validation_report:-n/a}"
     } >>"$NOTES_FILE"
 }
 
@@ -148,7 +148,7 @@ fi
 if [[ ! -f "$NOTES_FILE" ]]; then
     {
         printf '# Task %s notes\n\n' "$TASK_NAME"
-        printf '- Created: %s\n' "$(date --iso-8601=seconds)"
+        printf -- '- Created: %s\n' "$(date --iso-8601=seconds)"
     } >"$NOTES_FILE"
 fi
 
@@ -189,7 +189,7 @@ build_context_file() {
     {
         printf '## 迭代 #%s 上下文\n' "$iteration"
         if [[ -n "$reason" ]]; then
-            printf '- 上一轮失败原因：%s\n\n' "$reason"
+            printf -- '- 上一轮失败原因：%s\n\n' "$reason"
         fi
         if [[ -n "$previous_script" && -f "$previous_script" ]]; then
             echo '### 上一版脚本摘要'
