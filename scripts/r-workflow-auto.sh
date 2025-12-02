@@ -38,7 +38,7 @@ Optional arguments:
   -h, --help                 Show this help message
 
 Environment variables:
-  CODEX_CODEGEN_CMD_TEMPLATE Command template for code generation (default codex-cli ...)
+  CODEX_CODEGEN_CMD_TEMPLATE Command template for code generation (default codex exec --output-last-message ...)
   CODEX_CODEFIX_CMD_TEMPLATE Command template for fix iterations
 USAGE
 }
@@ -217,7 +217,7 @@ build_context_file() {
 
 run_codex_generation() {
     local prompt_file="$1" output_file="$2" log_file="$3" iteration="$4" is_fix="$5"
-    local default_cmd='codex-cli generate --prompt-file "$PROMPT_FILE" --language r --output "$OUTPUT_FILE"'
+    local default_cmd='codex exec --output-last-message "$OUTPUT_FILE" < "$PROMPT_FILE"'
     local template="$default_cmd"
     if [[ "$is_fix" == "true" ]]; then
         template="${CODEX_CODEFIX_CMD_TEMPLATE:-$default_cmd}"

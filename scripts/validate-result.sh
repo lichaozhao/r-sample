@@ -22,7 +22,7 @@ Optional arguments:
   -h, --help               Show this message
 
 Environment variables:
-  CODEX_VALIDATE_CMD_TEMPLATE   Command template for Codex validation (default: codex-cli generate ...)
+  CODEX_VALIDATE_CMD_TEMPLATE   Command template for Codex validation (default: codex exec --output-last-message ...)
 USAGE
 }
 
@@ -150,7 +150,7 @@ fi
     fi
 } >"$PROMPT_PATH"
 
-default_cmd='codex-cli generate --prompt-file "$PROMPT_FILE" --language markdown --output "$OUTPUT_FILE"'
+default_cmd='codex exec --output-last-message "$OUTPUT_FILE" < "$PROMPT_FILE"'
 VALIDATE_CMD="${CODEX_VALIDATE_CMD_TEMPLATE:-$default_cmd}"
 cmd_status=0
 PROMPT_FILE="$PROMPT_PATH" OUTPUT_FILE="$CODEX_OUTPUT" TASK_DIR="$TASK_DIR" \

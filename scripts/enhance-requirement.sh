@@ -24,7 +24,7 @@ Optional arguments:
   -h, --help                  Show this help message
 
 Environment variables:
-  CODEX_ENHANCE_CMD_TEMPLATE  Command template for requirement增强 (default: codex-cli generate ...)
+  CODEX_ENHANCE_CMD_TEMPLATE  Command template for requirement增强 (default: codex exec --output-last-message ...)
   CODEX_CRITERIA_CMD_TEMPLATE Command template for验收标准 (default: same as above)
 USAGE
 }
@@ -111,7 +111,7 @@ CRITERIA_PROMPT="$tmp_dir/criteria_prompt.md"
 
 render_template "$ENHANCE_TEMPLATE" '{{REQUIREMENT_RAW}}' "$RAW_PATH" "$ENHANCE_PROMPT"
 
-default_codex_cmd='codex-cli generate --prompt-file "$PROMPT_FILE" --language markdown --output "$OUTPUT_FILE"'
+default_codex_cmd='codex exec --output-last-message "$OUTPUT_FILE" < "$PROMPT_FILE"'
 ENHANCE_CMD="${CODEX_ENHANCE_CMD_TEMPLATE:-$default_codex_cmd}"
 CRITERIA_CMD="${CODEX_CRITERIA_CMD_TEMPLATE:-$default_codex_cmd}"
 
