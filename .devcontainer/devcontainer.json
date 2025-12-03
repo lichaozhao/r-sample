@@ -1,0 +1,10 @@
+{
+  "name": "r-sample",
+  "build": {
+    "dockerfile": "../docker/Dockerfile.r-runner",
+    "context": ".."
+  },
+  "remoteUser": "runner",
+  "workspaceFolder": "/workspace",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind"
+}

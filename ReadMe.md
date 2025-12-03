@@ -16,20 +16,20 @@
 | `tasks/` | 用户执行任务时的输入、生成脚本、日志与报告（运行时动态创建）。 |
 
 ## 工作流概览
-1. **enhance**（`scripts/enhance-requirement.sh`）  
+1. **enhance**  
    基于原始需求生成增强需求与验收标准。
-2. **generate**（`scripts/r-workflow-auto.sh` 内部）  
+2. **generate**   
    渲染模板并调用 Codex 生成 R 脚本。
-3. **execute**（`scripts/docker-utils.sh run`）  
+3. **execute**  
    在 R 容器中运行最新脚本，同时采集日志与输出工件。
-4. **validate**（`scripts/validate-result.sh`）  
+4. **validate**  
    结合验收标准、运行日志及输出文件生成验证报告，可触发自动修复迭代。
 
 详细数据流可参考 `docs/architecture.md`。
 
 ## 快速开始
 ### 前置条件
-- 安装 [Codex CLI](https://github.com/openai/codex-cli) 并配置好 API 访问。
+- 安装 [Codex CLI](https://github.com/openai/codex) 并配置好 API 访问。
 - 主机已安装 Docker，当前用户具备构建与运行镜像的权限。
 - （可选）安装 `rsync` 与 `rg` 以获得更快的文件同步与扫描体验。
 
@@ -72,4 +72,4 @@ cp docs/examples/requirement_raw.md tasks/sales-demo/requirement_raw.md
 
 ## 参考资料
 - `docs/architecture.md`：包含完整的系统架构、数据流与扩展点。
-- `agents.md`：更细化的人工操作指引，便于将自动化流程落地到团队协作中。
+- `agents.md`：由codex init生成，方便codex对当前项目做更新。

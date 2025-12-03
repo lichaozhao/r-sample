@@ -78,6 +78,13 @@ fi
 
 mkdir -p "$(dirname "$REPORT_PATH")"
 
+if command -v rg >/dev/null 2>&1; then
+    HAVE_RG=1
+else
+    HAVE_RG=0
+    echo "[WARN] ripgrep (rg) not found; falling back to grep for code scans." >&2
+fi
+
 syntax_status="PASS"
 syntax_details="R parser did not report issues."
 syntax_output=""
@@ -120,13 +127,25 @@ else
     lintr_details="See findings below."
 fi
 
-security_findings=$(rg --no-heading --line-number -e 'system\s*\(' -e 'eval\s*\(' -e 'parse\s*\(' -e 'assign\s*\(' "$SCRIPT_PATH" || true)
+security_tool_note=""
+if (( HAVE_RG )); then
+    security_findings=$(rg --no-heading --line-number -e 'system\s*\(' -e 'eval\s*\(' -e 'parse\s*\(' -e 'assign\s*\(' "$SCRIPT_PATH" || true)
+else
+    security_findings=$(grep -nE 'system\s*\(|eval\s*\(|parse\s*\(|assign\s*\(' "$SCRIPT_PATH" || true)
+    security_tool_note="(grep fallback; install ripgrep for deeper scan)"
+fi
 security_status="PASS"
 if [[ -n "$security_findings" ]]; then
     security_status="WARN"
 fi
 
-dependencies=$(rg --no-heading -o -N -e '^[[:space:]]*(library|require)\(([^)#]+)\)' "$SCRIPT_PATH" | sed -E 's/^[^\(]+\(([^),]+).*/\1/' | tr -d "'\"") || true
+dependency_matches=""
+if (( HAVE_RG )); then
+    dependency_matches=$(rg --no-heading -e '^[[:space:]]*(library|require)\(([^)#]+)\)' "$SCRIPT_PATH" || true)
+else
+    dependency_matches=$(grep -nE '^[[:space:]]*(library|require)\(([^)#]+)\)' "$SCRIPT_PATH" || true)
+fi
+dependencies=$(sed -E 's/^[^\(]+\(([^),]+).*/\1/' <<<"$dependency_matches" | tr -d "'\"")
 readarray -t dependency_list <<<"$dependencies"
 unique_dependencies=()
 for pkg in "${dependency_list[@]}"; do
@@ -152,6 +171,22 @@ else
     dep_status="SKIPPED"
 fi
 
+security_notes="None"
+if [[ -n "$security_findings" ]]; then
+    security_notes="Review findings"
+fi
+if (( ! HAVE_RG )); then
+    security_notes="${security_notes} ${security_tool_note}"
+fi
+
+dep_notes="OK"
+if (( ${#missing_deps[@]} > 0 )); then
+    dep_notes="Missing: ${missing_deps[*]}"
+fi
+if (( ! HAVE_RG )); then
+    dep_notes="${dep_notes} (grep fallback; install ripgrep for broader matching)"
+fi
+
 cat >"$REPORT_PATH" <<REPORT
 # R Code Check Report
 - Script: $SCRIPT_PATH
@@ -162,28 +197,28 @@ cat >"$REPORT_PATH" <<REPORT
 | --- | --- | --- |
 | Syntax | $syntax_status | $syntax_details |
 | Lintr | $lintr_status | $lintr_details |
-| Dangerous Calls | $security_status | $( [[ -n "$security_findings" ]] && echo "Review findings" || echo "None" ) |
-| Dependencies | $dep_status | $( [[ -n "$missing_deps" ]] && echo "Missing: ${missing_deps[*]}" || echo "OK" ) |
+| Dangerous Calls | $security_status | $security_notes |
+| Dependencies | $dep_status | $dep_notes |
 
 ## Syntax Output
-```
+\`\`\`
 ${syntax_output:-<none>}
-```
+\`\`\`
 
 ## Lintr Output
-```
+\`\`\`
 $lintr_cmd_output
-```
+\`\`\`
 
 ## Dangerous Call Scan
-```
+\`\`\`
 ${security_findings:-<none>}
-```
+\`\`\`
 
 ## Dependency Check
-```
+\`\`\`
 ${unique_dependencies[*]:-<none>}
-```
+\`\`\`
 REPORT
 
 exit_code=0
