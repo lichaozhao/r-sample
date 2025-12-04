@@ -66,22 +66,49 @@ run_r_in_container() {
 
     local abs_task_dir
     abs_task_dir="$(cd "$task_dir" && pwd)"
+    local abs_script_path
+    abs_script_path="$(cd "$(dirname "$script_path")" && pwd)/$(basename "$script_path")"
     local script_basename
-    script_basename="$(basename "$script_path")"
+    script_basename="$(basename "$abs_script_path")"
 
-    if [[ ! -f "$abs_task_dir/$script_basename" ]]; then
-        log ERROR "Script must reside under the task directory. Expected $abs_task_dir/$script_basename"
+    if [[ "$abs_script_path" != "$abs_task_dir"/* ]]; then
+        log ERROR "Script must reside under the task directory ($abs_task_dir)"
         return 1
     fi
 
+    local script_rel="${abs_script_path#$abs_task_dir/}"
+    local script_dir_rel
+    script_dir_rel="$(dirname "$script_rel")"
+    [[ "$script_dir_rel" == "." ]] && script_dir_rel=""
+
+    local container_task_root="/workspace"
+    local container_script_dir="$container_task_root"
+    if [[ -n "$script_dir_rel" ]]; then
+        container_script_dir="$container_task_root/$script_dir_rel"
+    fi
+
     check_docker_available
-    log INFO "Running $script_basename inside container '$container_name' using image '$image_tag'"
+    log INFO "Running $script_rel inside container '$container_name' using image '$image_tag'"
+    log INFO "Mounting task directory '$abs_task_dir' into $container_task_root"
+    local uid gid
+    uid="$(id -u)"
+    gid="$(id -g)"
+
     "$DOCKER_BIN" run --rm \
+        -u "$uid:$gid" \
         --name "$container_name" \
-        -v "$abs_task_dir":/workspace \
-        -w /workspace \
+        -v "$abs_task_dir":"$container_task_root" \
+        -w "$container_task_root" \
+        -e TASK_ROOT="$container_task_root" \
+        -e TASK_DATA_DIR="$container_task_root/data" \
+        -e TASK_OUTPUT_DIR="$container_task_root/output" \
+        -e TASK_TMP_DIR="$container_task_root/tmp" \
+        -e TASK_LOG_DIR="$container_task_root/logs" \
+        -e TASK_SCRIPT_PATH="$container_task_root/$script_rel" \
+        -e TASK_SCRIPT_DIR="$container_script_dir" \
+        -e TASK_NAME="$(basename "$abs_task_dir")" \
         "$image_tag" \
-        Rscript "$script_basename"
+        Rscript "$script_rel"
 }
 
 usage() {

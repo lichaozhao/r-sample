@@ -112,7 +112,7 @@ for artifact in "${ARTIFACTS[@]}"; do
     else
         RESOLVED_ARTIFACTS+=("$TASK_DIR/$artifact")
     fi
-}
+done
 
 check_file_exists "Run log" "$RUN_LOG"
 check_file_exists "Acceptance criteria" "$CRITERIA_PATH"
@@ -120,7 +120,7 @@ for idx in "${!RESOLVED_ARTIFACTS[@]}"; do
     original="${ARTIFACTS[$idx]}"
     resolved="${RESOLVED_ARTIFACTS[$idx]}"
     check_file_exists "Artifact $original" "$resolved"
-fi
+done
 
 # Build validation prompt for Codex
 {

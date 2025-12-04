@@ -185,11 +185,15 @@ run_enhancement_stage() {
 }
 
 build_context_file() {
-    local context_file="$1" iteration="$2" reason="$3" previous_script="$4" check_report="$5" run_log="$6" validation_report="$7"
+    local context_file="$1" iteration="$2" reason="$3" previous_script="$4" check_report="$5" run_log="$6" validation_report="$7" target_script="$8"
     {
         printf '## 迭代 #%s 上下文\n' "$iteration"
         if [[ -n "$reason" ]]; then
             printf -- '- 上一轮失败原因：%s\n\n' "$reason"
+        fi
+        if [[ -n "$target_script" ]]; then
+            printf '### 本轮目标脚本\n'
+            printf '%s\n\n' "$target_script"
         fi
         if [[ -n "$previous_script" && -f "$previous_script" ]]; then
             echo '### 上一版脚本摘要'
@@ -216,16 +220,67 @@ build_context_file() {
 }
 
 run_codex_generation() {
-    local prompt_file="$1" output_file="$2" log_file="$3" iteration="$4" is_fix="$5"
-    local default_cmd='codex exec --output-last-message "$OUTPUT_FILE" < "$PROMPT_FILE"'
+    local prompt_file="$1" script_path="$2" log_file="$3" iteration="$4" is_fix="$5"
+    local output_capture="$script_path"
+    if [[ "$is_fix" == "true" ]]; then
+        output_capture="$TASK_LOGS/codex_message_${iteration}.md"
+    fi
+    local default_cmd='codex exec --output-last-message "$OUTPUT_CAPTURE" < "$PROMPT_FILE"'
     local template="$default_cmd"
     if [[ "$is_fix" == "true" ]]; then
         template="${CODEX_CODEFIX_CMD_TEMPLATE:-$default_cmd}"
     else
         template="${CODEX_CODEGEN_CMD_TEMPLATE:-$default_cmd}"
     fi
-    PROMPT_FILE="$prompt_file" OUTPUT_FILE="$output_file" ITERATION="$iteration" TASK_DIR="$TASK_DIR" \
+    PROMPT_FILE="$prompt_file" OUTPUT_CAPTURE="$output_capture" ITERATION="$iteration" TASK_DIR="$TASK_DIR" \
         bash -c "$template" >"$log_file" 2>&1
+}
+
+sanitize_r_script() {
+    local script_path="$1"
+    if [[ ! -f "$script_path" ]]; then
+        return 1
+    fi
+    python3 - "$script_path" <<'PY'
+import pathlib, sys
+path = pathlib.Path(sys.argv[1])
+text = path.read_text()
+lines = text.splitlines()
+changed = False
+if lines and lines[0].strip().startswith("```"):
+    lines.pop(0)
+    changed = True
+while lines and lines and not lines[0].strip():
+    lines.pop(0)
+    changed = True
+if lines and lines[-1].strip().startswith("```"):
+    lines.pop()
+    changed = True
+while lines and lines and not lines[-1].strip():
+    lines.pop()
+    changed = True
+shebang = "#!/usr/bin/env Rscript"
+if lines:
+    if lines[0].strip() != shebang:
+        for idx, line in enumerate(lines):
+            if line.strip().startswith(shebang):
+                lines.pop(idx)
+                lines.insert(0, shebang)
+                changed = True
+                break
+        else:
+            lines.insert(0, shebang)
+            changed = True
+else:
+    lines = [shebang]
+    changed = True
+text = "\n".join(lines)
+if not text.endswith("\n"):
+    text += "\n"
+    changed = True
+if changed:
+    path.write_text(text)
+PY
 }
 
 run_static_check() {
@@ -286,20 +341,30 @@ run_iteration_loop() {
         printf -v tag '%02d' "$iteration"
         log INFO "Iteration $iteration starting"
         local context_file="$TASK_TMP/context_${tag}.md"
-        build_context_file "$context_file" "$iteration" "$last_failure" "$last_script" "$LAST_CHECK_REPORT" "$LAST_RUN_LOG" "$LAST_VALIDATION_REPORT"
+        build_context_file "$context_file" "$iteration" "$last_failure" "$last_script" "$LAST_CHECK_REPORT" "$LAST_RUN_LOG" "$LAST_VALIDATION_REPORT" "$TASK_DIR/script_v${tag}.R"
+        log INFO "Iteration $iteration: Context file prepared at $context_file (last failure: ${last_failure:-none})"
         local template="$TEMPLATE_DIR/code-generation-prompt.md"
         if (( iteration > 1 )); then
             template="$TEMPLATE_DIR/code-fix-prompt.md"
         fi
         local prompt_file="$TASK_TMP/prompt_${tag}.md"
         render_code_prompt "$template" "$prompt_file" "$REQUIREMENT_ENHANCED" "$ACCEPTANCE_CRITERIA" "$context_file"
+        log INFO "Iteration $iteration: Prompt rendered using template $(basename "$template") -> $prompt_file"
         local script_path="$TASK_DIR/script_v${tag}.R"
+        if (( iteration > 1 )) && [[ -n "$last_script" && -f "$last_script" ]] && [[ "$last_script" != "$script_path" ]]; then
+            cp "$last_script" "$script_path"
+        fi
         local codex_log="$TASK_LOGS/codex_${tag}.log"
         local is_fix="false"
         (( iteration > 1 )) && is_fix="true"
+        log INFO "Iteration $iteration: Invoking Codex (is_fix=$is_fix) output -> $script_path, log -> $codex_log"
         if ! run_codex_generation "$prompt_file" "$script_path" "$codex_log" "$iteration" "$is_fix"; then
             append_note "$tag" "codex_failed" "Codex 生成失败" "$script_path" "" "" ""
             die "Codex generation failed; see $codex_log"
+        fi
+        log INFO "Iteration $iteration: Codex generation completed successfully"
+        if ! sanitize_r_script "$script_path"; then
+            log WARN "Iteration $iteration: 脚本清理失败或文件缺失"
         fi
         last_script="$script_path"
         LAST_SCRIPT_PATH="$script_path"
@@ -307,6 +372,7 @@ run_iteration_loop() {
         local check_status=0
         local check_report
         check_report=$(run_static_check "$script_path" "$tag") || check_status=$?
+        log INFO "Iteration $iteration: 静态检查输出 -> $check_report (status=$check_status)"
         LAST_CHECK_REPORT="$check_report"
         if [[ ! -s "$script_path" ]]; then
             append_note "$tag" "empty_script" "生成脚本为空" "$script_path" "$check_report" "" ""
@@ -315,6 +381,7 @@ run_iteration_loop() {
 
         if (( check_status != 0 )); then
             last_failure="静态检查失败"
+            log WARN "Iteration $iteration: 静态检查失败，报告位于 $check_report"
             if [[ "$last_failure" == "$previous_failure" ]]; then
                 ((repeat_failures++))
             else
@@ -332,6 +399,7 @@ run_iteration_loop() {
         if (( SKIP_DOCKER )); then
             cp "$script_path" "$TASK_DIR/script_final.R"
             append_note "$tag" "success" "跳过执行，静态检查通过" "$script_path" "$check_report" "" ""
+            log INFO "Iteration $iteration: 跳过容器执行 (--skip-docker)，脚本拷贝到 script_final.R"
             LAST_SUCCESS_ITER="$tag"
             success=1
             break
@@ -339,10 +407,13 @@ run_iteration_loop() {
 
         local run_status=0
         local run_log
+        log INFO "Iteration $iteration: 开始容器执行，日志 -> $TASK_LOGS/run_${tag}.log"
         run_log=$(run_container_stage "$script_path" "$tag") || run_status=$?
         LAST_RUN_LOG="$run_log"
+        log INFO "Iteration $iteration: 容器执行完成，状态=$run_status，日志 -> $run_log"
         if (( run_status != 0 )); then
             last_failure="容器执行失败"
+            log WARN "Iteration $iteration: 容器执行失败，日志位于 $run_log"
             append_note "$tag" "run_failed" "$last_failure" "$script_path" "$check_report" "$run_log" ""
             if [[ "$last_failure" == "$previous_failure" ]]; then
                 ((repeat_failures++))
@@ -359,10 +430,13 @@ run_iteration_loop() {
 
         local validation_status=0
         local validation_report
+        log INFO "Iteration $iteration: 开始结果验证，报告 -> $TASK_LOGS/validation_${tag}.md"
         validation_report=$(run_validation_stage "$run_log" "$tag") || validation_status=$?
+        log INFO "Iteration $iteration: 结果验证完成，状态=$validation_status，报告 -> $validation_report"
         LAST_VALIDATION_REPORT="$validation_report"
         if (( validation_status != 0 )); then
             last_failure="结果验证失败"
+            log WARN "Iteration $iteration: 结果验证失败，报告位于 $validation_report"
             append_note "$tag" "validation_failed" "$last_failure" "$script_path" "$check_report" "$run_log" "$validation_report"
             if [[ "$last_failure" == "$previous_failure" ]]; then
                 ((repeat_failures++))
