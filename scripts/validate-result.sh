@@ -81,11 +81,18 @@ if ! [[ "$MAX_PREVIEW" =~ ^[0-9]+$ ]]; then
 fi
 
 if [[ -z "$REPORT_PATH" ]]; then
-    next_id=$(ls "$LOG_DIR"/validation_*.md 2>/dev/null | sed -n 's/.*validation_\([0-9][0-9]\).md/\1/p' | sort | tail -n1)
-    if [[ -z "$next_id" ]]; then
+    shopt -s nullglob
+    existing_reports=("$LOG_DIR"/validation_*.md)
+    shopt -u nullglob
+    if (( ${#existing_reports[@]} == 0 )); then
         next_id="01"
     else
-        printf -v next_id '%02d' $((10#$next_id + 1))
+        last_id=$(printf '%s\n' "${existing_reports[@]}" | sed -n 's/.*validation_\([0-9][0-9]\).md/\1/p' | sort | tail -n1)
+        if [[ -z "$last_id" ]]; then
+            next_id="01"
+        else
+            printf -v next_id '%02d' $((10#$last_id + 1))
+        fi
     fi
     REPORT_PATH="$LOG_DIR/validation_${next_id}.md"
 fi

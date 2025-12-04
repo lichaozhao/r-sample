@@ -9,9 +9,8 @@ docker:
   timeout_seconds: 600
 
 codex:
-  model: gpt-5.1-code-large
-  temperature: 0.1
-  max_tokens: 2048
+  model: gpt-5.1-codex
+  model_reasoning_effort: high
   retry: 2
 
 validation:
