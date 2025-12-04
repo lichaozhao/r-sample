@@ -3,27 +3,27 @@
 
 ## 当前存在的问题
 - Dockerfile为示例，需要调整成合适的镜像资源
-- 暂未测试
+- scripts/check-r-code.sh:70-90 在把脚本路径注入 Rscript -e "parse(file = '...')" 时直接拼接未转义的 '，若任务目录含有单引号会导致解析失败或执行错误。
+- scripts/r-workflow-auto.sh 的需求增强阶段会执行增强文档中的任何“新建任务”指令（示例：tasks/iris-row-count/），目前缺少保护机制，易在未审核增强内容时误创建额外任务目录。
 
 ## 目录结构
 | 路径 | 说明 |
 | --- | --- |
-| `config/` | Codex CLI 与容器的全局默认配置（如镜像、资源、重试次数）。 |
 | `docker/` | R 运行镜像 Dockerfile 及 `docker-compose.yml`，确保环境可复现。 |
 | `scripts/` | 自动化脚本，覆盖需求增强、代码生成、静态检查、容器执行与结果验证。 |
 | `templates/` | Codex 提示模板与示例，用于保证生成内容结构统一。 |
 | `docs/` | 架构与流程说明，可作为深入理解的参考资料。 |
-| `tasks/` | 用户执行任务时的输入、生成脚本、日志与报告（运行时动态创建）。 |
+| `tasks/` | 用户执行任务时的输入、生成脚本、日志与报告（运行时动态创建，包含 `output/`、`logs/`、`tmp/`、`notes.md` 等）。 |
 
 ## 工作流概览
 1. **enhance**  
    基于原始需求生成增强需求与验收标准。
 2. **generate**   
-   渲染模板并调用 Codex 生成 R 脚本。
+   渲染模板并调用 Codex 生成 R 脚本；修复轮会把上一版脚本复制到 `script_vXX.R`，并通过 `sanitize_r_script` 清除 Markdown 包装，保证传给 R 的永远是可执行代码。
 3. **execute**  
-   在 R 容器中运行最新脚本，同时采集日志与输出工件。
+   在 R 容器中运行最新脚本，同时采集日志与输出工件；容器运行时会继承宿主 UID/GID，因此确保 `tasks/<TASK>/output`、`logs` 可写即可。
 4. **validate**  
-   结合验收标准、运行日志及输出文件生成验证报告，可触发自动修复迭代。
+   `validate-result.sh` 先做本地存在性检查，再构造 Prompt 让 Codex 根据验收标准回顾运行日志与产物；可指定多个 `--artifact` 进行比对，失败将触发下一轮修复。
 
 详细数据流可参考 `docs/architecture.md`。
 
@@ -48,14 +48,19 @@ cp docs/examples/requirement_raw.md tasks/sales-demo/requirement_raw.md
 执行完成后，`tasks/sales-demo/` 将包含：
 - `requirement_enhanced.md`、`acceptance_criteria.md`：增强需求与验收标准。
 - `script_vXX.R`：按迭代编号保存的 R 脚本。
-- `logs/`：Codex 交互日志、容器运行日志、静态检查与验证报告。
+- `logs/`：Codex 交互日志、静态检查报告、容器运行日志、验证报告（缺少 `rg` 时也会在日志里给出警示）。
+- `tmp/`：上下文、Prompt、验证快照（复现 Codex 输入的关键）。
 - `output/`：脚本产出（图表、报表、模型文件等）。
+- `notes.md`、`report.md`：任务历程与最终摘要。
+
+> ⚠️ **提示**：增强阶段产出的需求文档可能会指示“新建别的子任务目录”（例如 `tasks/iris-row-count/`）。在继续自动迭代前，建议先审阅 `requirement_enhanced.md`，必要时手动调整后再执行 `r-workflow-auto.sh`，以免无意中在 `tasks/` 下创建额外目录。
 
 ## 常用脚本速查
-- `scripts/r-workflow-auto.sh`：端到端控制器，可控制起始阶段、最大迭代数、期望产出等。
-- `scripts/check-r-code.sh`：独立运行的 R 静态检查器（语法、lintr、危险函数、依赖）。
-- `scripts/docker-utils.sh`：封装镜像构建与容器执行，便于在 CI 或远程主机复用。
-- `scripts/validate-result.sh`：基于验收标准和运行日志生成最终验证报告。
+- `scripts/r-workflow-auto.sh`：端到端控制器，支持 `--from-stage`、`--max-iters`、`--artifact`、`--skip-docker`、`CODEX_*_CMD_TEMPLATE` 等；修复迭代自动复制上一版脚本并清理 Markdown 片段。
+- `scripts/enhance-requirement.sh`：读取 `requirement_raw.md`，渲染模板后调用 Codex 产出增强需求与验收标准，并把 Prompt/日志写入 `tasks/<TASK>/tmp`、`logs`。
+- `scripts/check-r-code.sh`：运行 `parse()`、`lintr`、危险调用扫描与依赖探测，生成 Markdown 报告（若 `rg` 缺失会 fallback 到 `grep`）。
+- `scripts/docker-utils.sh`：封装镜像构建 (`build`) 与脚本执行 (`run`)，运行脚本时会将任务目录挂载到 `/workspace` 并以宿主 UID/GID 执行 `Rscript`。
+- `scripts/validate-result.sh`：校验运行日志、验收标准与产物是否存在，再结合 Codex 给出文字验收结论；本地检查失败会直接返回非零。
 
 ## Azure 测试资源需求
 对于“快速验证”场景，仅需准备精简的 VM + ACR + Azure OpenAI 组合即可跑通流程：
