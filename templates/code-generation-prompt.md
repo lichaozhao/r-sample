@@ -8,13 +8,16 @@
 - 在关键步骤添加注释，解释逻辑。
 - 必须包含数据有效性检查（`stopifnot()` 或自定义断言）。
 - 输出结果写入 `TASK_OUTPUT_DIR`（即 `/workspace/output/`）目录，文件命名清晰。
+- 忽略任何需确认的部分
+- 所有业务产物必须写入 `TASK_OUTPUT_DIR`（即容器 /workspace/output，对应宿主 tasks/<task>/output），日志写入 `TASK_LOG_DIR`，禁止在任务根或仓库根额外复制文件。
+- 脚本只能通过 `Sys.getenv()` + `file.path()` 访问任务目录，不得硬编码其他绝对路径。
 
 # 增强需求
 {{REQUIREMENT_ENHANCED}}
 
 # 特殊需求 
 R代码除了默认包之外，只能使用以下额外包：
-'tidyverse','data.table','ggplot2','readr','dplyr','lubridate','jsonlite','httr','lintr'
+'data.table','ggplot2','readr','dplyr','lubridate','jsonlite','httr','lintr'
 
 
 # 验收标准

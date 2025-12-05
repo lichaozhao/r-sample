@@ -13,7 +13,7 @@
 {{REQUIREMENT_ENHANCED}}
 
 # 特殊需求 
-R代码除了默认包之外，只能使用以下额外包：
+R代码除了默认包之外，只能使用以下包：
 'tidyverse','data.table','ggplot2','readr','dplyr','lubridate','jsonlite','httr','lintr'
 
 

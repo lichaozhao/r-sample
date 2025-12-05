@@ -9,10 +9,20 @@ source "$SCRIPT_DIR/docker-utils.sh"
 STAGE_ORDER=(enhance generate execute validate)
 declare -A STAGE_INDEX=( [enhance]=1 [generate]=2 [execute]=3 [validate]=4 )
 
+SCRIPT_NAME="r-workflow-auto.sh"
+COLOR_BANNER="\033[1;35m"
+COLOR_RESET="\033[0m"
+
 log() {
     local level="$1"; shift
     printf '[%s] [%s] %s\n' "$(date --iso-8601=seconds)" "$level" "$*"
 }
+
+announce_start() {
+    printf "%b[%s] %s invoked%b\n" "$COLOR_BANNER" "$(date --iso-8601=seconds)" "$SCRIPT_NAME" "$COLOR_RESET" >&2
+}
+
+announce_start
 
 die() {
     log ERROR "$*"
@@ -120,6 +130,8 @@ while [[ $# -gt 0 ]]; do
             exit 1 ;;
     esac
 done
+
+log INFO "Args parsed task=$TASK_NAME from-stage=$FROM_STAGE max-iters=$MAX_ITERS skip-docker=$SKIP_DOCKER artifacts=${ARTIFACTS[*]:-none}"
 
 [[ -n "$TASK_NAME" ]] || die "--task is required"
 if [[ -n "$INPUT_PATH" ]]; then

@@ -10,11 +10,22 @@ DOCKER_DIR="$REPO_ROOT/docker"
 DOCKERFILE="$DOCKER_DIR/Dockerfile.r-runner"
 DEFAULT_IMAGE_TAG=${R_WORKFLOW_IMAGE:-codex-r-runner:latest}
 DOCKER_BIN=${DOCKER_BIN:-docker}
+SCRIPT_NAME="docker-utils.sh"
+COLOR_BANNER="\033[1;35m"
+COLOR_RESET="\033[0m"
 
 log() {
     local level="$1"; shift
     printf '[%s] %s\n' "$level" "$*" >&2
 }
+
+announce_start() {
+    printf "%b[%s] %s invoked%b\n" "$COLOR_BANNER" "$(date --iso-8601=seconds)" "$SCRIPT_NAME" "$COLOR_RESET" >&2
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    announce_start
+fi
 
 ensure_file() {
     local path="$1"

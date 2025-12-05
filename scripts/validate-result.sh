@@ -3,8 +3,18 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+SCRIPT_NAME="validate-result.sh"
+COLOR_BANNER="\033[1;35m"
+COLOR_RESET="\033[0m"
 
 timestamp() { date --iso-8601=seconds; }
+
+log_info() { printf '[%s] [INFO] %s\n' "$(timestamp)" "$*" >&2; }
+log_warn() { printf '[%s] [WARN] %s\n' "$(timestamp)" "$*" >&2; }
+
+announce_start() {
+    printf "%b[%s] %s invoked%b\n" "$COLOR_BANNER" "$(timestamp)" "$SCRIPT_NAME" "$COLOR_RESET" >&2
+}
 
 usage() {
     cat <<'USAGE'
@@ -25,6 +35,8 @@ Environment variables:
   CODEX_VALIDATE_CMD_TEMPLATE   Command template for Codex validation (default: codex exec --output-last-message ...)
 USAGE
 }
+
+announce_start
 
 TASK_NAME=""
 CRITERIA_PATH=""
@@ -55,6 +67,8 @@ while [[ $# -gt 0 ]]; do
             usage; exit 1 ;;
     esac
 done
+
+log_info "Args parsed task=$TASK_NAME run-log=$RUN_LOG criteria=$CRITERIA_PATH report=${REPORT_PATH:-auto}"
 
 if [[ -z "$TASK_NAME" || -z "$CRITERIA_PATH" || -z "$RUN_LOG" ]]; then
     echo "error: --task, --criteria, and --run-log are required" >&2
@@ -97,11 +111,97 @@ if [[ -z "$REPORT_PATH" ]]; then
     REPORT_PATH="$LOG_DIR/validation_${next_id}.md"
 fi
 
-PROMPT_PATH="$TASK_DIR/tmp/validate_prompt.md"
-CODEX_OUTPUT="$TASK_DIR/tmp/validate_codex.md"
+log_info "Report path resolved: $REPORT_PATH"
 
 summaries=()
 failures=0
+declare -a CHECK_LABELS=()
+declare -a CHECK_PATHS=()
+declare -A SEEN_PATHS=()
+
+resolve_path() {
+    local raw="$1"
+    if [[ -z "$raw" ]]; then
+        return 1
+    fi
+    if [[ "$raw" == *'<'* || "$raw" == *'>'* ]]; then
+        return 1
+    fi
+    case "$raw" in
+        /workspace/*)
+            printf '%s' "$TASK_DIR${raw#/workspace}"
+            ;;
+        tasks/*)
+            printf '%s' "$REPO_ROOT/$raw"
+            ;;
+        output/*)
+            printf '%s' "$TASK_DIR/$raw"
+            ;;
+        logs/*)
+            printf '%s' "$TASK_DIR/$raw"
+            ;;
+        /*)
+            printf '%s' "$raw"
+            ;;
+        *)
+            printf '%s' "$TASK_DIR/output/$raw"
+            ;;
+    esac
+}
+
+add_check_item() {
+    local label="$1" raw="$2"
+    local resolved
+    resolved=$(resolve_path "$raw") || resolved="$raw"
+    if [[ -z "$resolved" ]]; then
+        return 0
+    fi
+    if [[ -n "${SEEN_PATHS[$resolved]:-}" ]]; then
+        return 0
+    fi
+    SEEN_PATHS["$resolved"]=1
+    CHECK_LABELS+=("$label")
+    CHECK_PATHS+=("$resolved")
+}
+
+extract_requirement_artifacts() {
+    local requirement_file="$TASK_DIR/requirement_enhanced.md"
+    [[ -f "$requirement_file" ]] || return 0
+    local raw_paths
+    raw_paths=$(python3 - "$requirement_file" <<'PY'
+import pathlib, re, sys
+path = pathlib.Path(sys.argv[1])
+try:
+    text = path.read_text()
+except Exception:
+    sys.exit(0)
+capture = False
+paths = []
+for line in text.splitlines():
+    stripped = line.strip()
+    if stripped.startswith('##'):
+        capture = '结果交付' in stripped
+        continue
+    if not capture or not stripped:
+        continue
+    matches = re.findall(r'`([^`]+)`', stripped)
+    if not matches:
+        matches = re.findall(r'(/workspace/[\w./\-]+)', stripped)
+    for m in matches:
+        if '<' in m or '>' in m:
+            continue
+        if re.search(r'\.(csv|png|md|log|txt)$', m, re.IGNORECASE):
+            paths.append(m.strip())
+if paths:
+    print('\n'.join(paths))
+PY
+) || raw_paths=""
+    [[ -z "$raw_paths" ]] && return 0
+    while IFS= read -r item; do
+        [[ -z "$item" ]] && continue
+        add_check_item "Result item: $item" "$item"
+    done <<<"$raw_paths"
+}
 
 check_file_exists() {
     local label="$1" path="$2"
@@ -109,63 +209,25 @@ check_file_exists() {
         summaries+=("$label: PASS ($path)")
     else
         summaries+=("$label: FAIL ($path)")
-        ((failures++))
+        ((++failures))
     fi
+    return 0
 }
 
+add_check_item "Run log" "$RUN_LOG"
+add_check_item "Acceptance criteria" "$CRITERIA_PATH"
+
 for artifact in "${ARTIFACTS[@]}"; do
-    if [[ "$artifact" == /* ]]; then
-        RESOLVED_ARTIFACTS+=("$artifact")
-    else
-        RESOLVED_ARTIFACTS+=("$TASK_DIR/$artifact")
-    fi
+    add_check_item "Artifact (CLI) $artifact" "$artifact"
 done
 
-check_file_exists "Run log" "$RUN_LOG"
-check_file_exists "Acceptance criteria" "$CRITERIA_PATH"
-for idx in "${!RESOLVED_ARTIFACTS[@]}"; do
-    original="${ARTIFACTS[$idx]}"
-    resolved="${RESOLVED_ARTIFACTS[$idx]}"
-    check_file_exists "Artifact $original" "$resolved"
+extract_requirement_artifacts
+
+log_info "Total check targets: ${#CHECK_LABELS[@]}"
+
+for idx in "${!CHECK_LABELS[@]}"; do
+    check_file_exists "${CHECK_LABELS[$idx]}" "${CHECK_PATHS[$idx]}"
 done
-
-# Build validation prompt for Codex
-{
-    echo "# 验收标准"
-    cat "$CRITERIA_PATH"
-    echo
-    echo "# 执行日志摘要"
-    tail -n "$MAX_PREVIEW" "$RUN_LOG"
-    echo
-    if [[ ${#RESOLVED_ARTIFACTS[@]} -gt 0 ]]; then
-        echo "# 输出文件快照"
-        for idx in "${!RESOLVED_ARTIFACTS[@]}"; do
-            artifact="${RESOLVED_ARTIFACTS[$idx]}"
-            label="${ARTIFACTS[$idx]}"
-            echo "## $label ($artifact)"
-            if [[ -s "$artifact" ]]; then
-                line_count=$(wc -l <"$artifact" 2>/dev/null || echo 0)
-                echo "行数: $line_count"
-                echo '```'
-                head -n "$MAX_PREVIEW" "$artifact"
-                echo '```'
-            else
-                echo "文件缺失或为空。"
-            fi
-            echo
-        done
-    fi
-} >"$PROMPT_PATH"
-
-default_cmd='codex exec --output-last-message "$OUTPUT_FILE" < "$PROMPT_FILE"'
-VALIDATE_CMD="${CODEX_VALIDATE_CMD_TEMPLATE:-$default_cmd}"
-cmd_status=0
-PROMPT_FILE="$PROMPT_PATH" OUTPUT_FILE="$CODEX_OUTPUT" TASK_DIR="$TASK_DIR" \
-    bash -c "$VALIDATE_CMD" >/dev/null 2>&1 || cmd_status=$?
-
-if (( cmd_status != 0 )); then
-    echo "warning: Codex validation command failed (exit $cmd_status); continuing with local checks." >&2
-fi
 
 {
     echo "# 验证报告"
@@ -173,15 +235,12 @@ fi
     echo "- 生成时间: $(timestamp)"
     echo
     echo "## 本地校验"
-    for summary in "${summaries[@]}"; do
-        echo "- $summary"
-    done
-    echo
-    echo "## Codex 评估"
-    if [[ -s "$CODEX_OUTPUT" ]]; then
-        cat "$CODEX_OUTPUT"
+    if [[ ${#summaries[@]} -eq 0 ]]; then
+        echo "- 未找到需要检查的文件"
     else
-        echo "Codex 验证未执行或无输出。"
+        for summary in "${summaries[@]}"; do
+            echo "- $summary"
+        done
     fi
 } >"$REPORT_PATH"
 
@@ -190,4 +249,5 @@ if (( failures > 0 )); then
     exit 1
 fi
 
+log_info "Validation succeeded"
 echo "Validation succeeded. Report: $REPORT_PATH"

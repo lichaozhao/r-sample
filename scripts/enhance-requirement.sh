@@ -4,10 +4,17 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TEMPLATE_DIR="$REPO_ROOT/templates"
+SCRIPT_NAME="enhance-requirement.sh"
+COLOR_BANNER="\033[1;35m"
+COLOR_RESET="\033[0m"
 
 timestamp() { date --iso-8601=seconds; }
 
 log_info() { printf '[%s] %s\n' "$(timestamp)" "$*"; }
+
+announce_start() {
+    printf "%b[%s] %s invoked%b\n" "$COLOR_BANNER" "$(timestamp)" "$SCRIPT_NAME" "$COLOR_RESET" >&2
+}
 
 usage() {
     cat <<'USAGE'
@@ -28,6 +35,8 @@ Environment variables:
   CODEX_CRITERIA_CMD_TEMPLATE Command template for验收标准 (default: same as above)
 USAGE
 }
+
+announce_start
 
 render_template() {
     local template_path="$1"
@@ -78,6 +87,8 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+log_info "Args parsed (task=$TASK_NAME raw=${RAW_PATH:-auto})"
+
 if [[ -z "$TASK_NAME" ]]; then
     echo "error: --task is required" >&2
     usage
@@ -96,6 +107,8 @@ if [[ ! -f "$RAW_PATH" ]]; then
     echo "error: requirement file not found: $RAW_PATH" >&2
     exit 1
 fi
+
+log_info "Using paths raw=$RAW_PATH enhanced=$ENHANCED_PATH criteria=$CRITERIA_PATH"
 
 ENHANCE_TEMPLATE="$TEMPLATE_DIR/requirement-enhancement-prompt.md"
 CRITERIA_TEMPLATE="$TEMPLATE_DIR/acceptance-criteria-prompt.md"

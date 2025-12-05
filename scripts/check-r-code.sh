@@ -3,8 +3,25 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+SCRIPT_NAME="check-r-code.sh"
+COLOR_BANNER="\033[1;35m"
+COLOR_RESET="\033[0m"
 
 timestamp() { date --iso-8601=seconds; }
+
+announce_start() {
+    printf "%b[%s] %s invoked%b\n" "$COLOR_BANNER" "$(timestamp)" "$SCRIPT_NAME" "$COLOR_RESET" >&2
+}
+
+log_info() {
+    printf '[%s] [INFO] %s\n' "$(timestamp)" "$*" >&2
+}
+
+log_warn() {
+    printf '[%s] [WARN] %s\n' "$(timestamp)" "$*" >&2
+}
+
+announce_start
 
 usage() {
     cat <<'USAGE'
@@ -44,6 +61,8 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+log_info "Parsed CLI args (script=${SCRIPT_PATH:-unset} task=${TASK_NAME:-n/a})"
+
 if [[ -z "$SCRIPT_PATH" ]]; then
     echo "error: --script is required" >&2
     usage
@@ -54,6 +73,8 @@ if [[ ! -f "$SCRIPT_PATH" ]]; then
     echo "error: script not found: $SCRIPT_PATH" >&2
     exit 1
 fi
+
+log_info "Validated script path: $SCRIPT_PATH"
 
 if [[ -n "$TASK_NAME" && -z "$LOG_DIR" ]]; then
     LOG_DIR="$REPO_ROOT/tasks/$TASK_NAME/logs"
@@ -82,12 +103,13 @@ if command -v rg >/dev/null 2>&1; then
     HAVE_RG=1
 else
     HAVE_RG=0
-    echo "[WARN] ripgrep (rg) not found; falling back to grep for code scans." >&2
+    log_warn "ripgrep (rg) not found; falling back to grep"
 fi
 
 syntax_status="PASS"
 syntax_details="R parser did not report issues."
 syntax_output=""
+log_info "Running syntax parse"
 if ! syntax_output=$(Rscript --vanilla -e "parse(file = '$SCRIPT_PATH')" 2>&1); then
     syntax_status="FAIL"
     syntax_details="R parser reported an error."
@@ -95,6 +117,7 @@ fi
 
 lintr_status="SKIPPED"
 lintr_details="lintr not installed; skipping style checks."
+log_info "Running lintr lint pass"
 lintr_cmd_output=$(Rscript --vanilla - "$SCRIPT_PATH" <<'RS'
 args <- commandArgs(trailingOnly = TRUE)
 script <- args[[1]]
@@ -226,9 +249,7 @@ if [[ "$syntax_status" == "FAIL" ]]; then
     exit_code=1
 fi
 
-cat <<SUMMARY
-Report written to $REPORT_PATH
-Syntax: $syntax_status, Lintr: $lintr_status, Security: $security_status, Dependencies: $dep_status
-SUMMARY
+log_info "Report written to $REPORT_PATH"
+log_info "Checks => Syntax:$syntax_status Lintr:$lintr_status Security:$security_status Dependencies:$dep_status"
 
 exit "$exit_code"
