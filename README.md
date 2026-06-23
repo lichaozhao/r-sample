@@ -55,6 +55,9 @@ cp docs/examples/requirement_raw.md tasks/sales-demo/requirement_raw.md
 
 # 3. 启动自动化流水线（生成、执行、验证）
 ./scripts/r-workflow-auto.sh -t sales-demo
+
+# 4. 如果没有容器环境（本机需要有R环境）
+./scripts/r-workflow-auto.sh -t sales-demo --skip-docker
 ```
 执行完成后，`tasks/sales-demo/` 将包含：
 - `requirement_enhanced.md`、`acceptance_criteria.md`：增强需求与验收标准。
