@@ -1,6 +1,6 @@
 # Global workflow defaults. Override per-task by placing a config.yaml inside tasks/<TASK>/.
 docker:
-  image: codex-r-runner:latest
+  image: copilot-r-runner:latest
   build:
     dockerfile: docker/Dockerfile.r-runner
   resources:
@@ -8,8 +8,8 @@ docker:
     memory: 4g
   timeout_seconds: 600
 
-codex:
-  model: gpt-5.1-codex
+copilot:
+  model: auto
   model_reasoning_effort: high
   retry: 2
 

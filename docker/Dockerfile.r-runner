@@ -15,7 +15,7 @@ RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen \
     && locale-gen \
     && update-locale LANG=en_US.UTF-8
 
-RUN R -q -e "install.packages(c('tidyverse','data.table','ggplot2','readr','dplyr','lubridate','jsonlite','httr','lintr'), dependencies = TRUE)"
+RUN R -q -e "install.packages(c('tidyverse','data.table','ggplot2','readr','dplyr','lubridate','jsonlite','httr','lintr'), dependencies = FALSE)"
 
 RUN useradd --create-home --shell /bin/bash runner
 WORKDIR /workspace

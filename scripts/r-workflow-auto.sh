@@ -43,13 +43,15 @@ Optional arguments:
   --skip-docker              Skip container execution & validation; stop after static checks
   --from-stage STAGE         Start from stage enhance|generate|execute|validate (default: enhance)
   --artifact PATH            Expected output artifact to validate (repeatable)
-  --image TAG                Docker image tag (default: codex-r-runner:latest)
+  --image TAG                Docker image tag (default: copilot-r-runner:latest)
   --notes FILE               Override notes file path
   -h, --help                 Show this help message
 
 Environment variables:
-  CODEX_CODEGEN_CMD_TEMPLATE Command template for code generation (default codex exec --output-last-message ...)
-  CODEX_CODEFIX_CMD_TEMPLATE Command template for fix iterations
+  COPILOT_CODEGEN_CMD_TEMPLATE Command template for code generation (default: copilot -p ... -s --allow-all-tools)
+  COPILOT_CODEFIX_CMD_TEMPLATE Command template for fix iterations
+  COPILOT_CMD                  Copilot executable name/path (default: copilot)
+  COPILOT_COMMON_ARGS          Shared Copilot args (default: -s --allow-all-tools)
 USAGE
 }
 
@@ -99,7 +101,7 @@ MAX_ITERS=5
 SKIP_DOCKER=0
 FROM_STAGE="enhance"
 ARTIFACTS=()
-IMAGE_TAG="${R_WORKFLOW_IMAGE:-codex-r-runner:latest}"
+IMAGE_TAG="${R_WORKFLOW_IMAGE:-copilot-r-runner:latest}"
 NOTES_FILE=""
 
 while [[ $# -gt 0 ]]; do
@@ -231,18 +233,15 @@ build_context_file() {
     } >"$context_file"
 }
 
-run_codex_generation() {
+run_copilot_generation() {
     local prompt_file="$1" script_path="$2" log_file="$3" iteration="$4" is_fix="$5"
     local output_capture="$script_path"
-    if [[ "$is_fix" == "true" ]]; then
-        output_capture="$TASK_LOGS/codex_message_${iteration}.md"
-    fi
-    local default_cmd='codex exec --output-last-message "$OUTPUT_CAPTURE" < "$PROMPT_FILE"'
+    local default_cmd='set -o pipefail; "${COPILOT_CMD:-copilot}" -p "$(cat "$PROMPT_FILE")" ${COPILOT_COMMON_ARGS:--s --allow-all-tools} | tee "$OUTPUT_CAPTURE"'
     local template="$default_cmd"
     if [[ "$is_fix" == "true" ]]; then
-        template="${CODEX_CODEFIX_CMD_TEMPLATE:-$default_cmd}"
+        template="${COPILOT_CODEFIX_CMD_TEMPLATE:-$default_cmd}"
     else
-        template="${CODEX_CODEGEN_CMD_TEMPLATE:-$default_cmd}"
+        template="${COPILOT_CODEGEN_CMD_TEMPLATE:-$default_cmd}"
     fi
     PROMPT_FILE="$prompt_file" OUTPUT_CAPTURE="$output_capture" ITERATION="$iteration" TASK_DIR="$TASK_DIR" \
         bash -c "$template" >"$log_file" 2>&1
@@ -310,7 +309,7 @@ run_static_check() {
 run_container_stage() {
     local script_path="$1" iteration_tag="$2"
     local run_log="$TASK_LOGS/run_${iteration_tag}.log"
-    local container_name="codex-r-${TASK_NAME}-${iteration_tag}"
+    local container_name="copilot-r-${TASK_NAME}-${iteration_tag}"
     if run_r_in_container "$script_path" "$TASK_DIR" "$IMAGE_TAG" "$container_name" >"$run_log" 2>&1; then
         echo "$run_log"
         return 0
@@ -366,15 +365,15 @@ run_iteration_loop() {
         if (( iteration > 1 )) && [[ -n "$last_script" && -f "$last_script" ]] && [[ "$last_script" != "$script_path" ]]; then
             cp "$last_script" "$script_path"
         fi
-        local codex_log="$TASK_LOGS/codex_${tag}.log"
+        local copilot_log="$TASK_LOGS/copilot_${tag}.log"
         local is_fix="false"
         (( iteration > 1 )) && is_fix="true"
-        log INFO "Iteration $iteration: Invoking Codex (is_fix=$is_fix) output -> $script_path, log -> $codex_log"
-        if ! run_codex_generation "$prompt_file" "$script_path" "$codex_log" "$iteration" "$is_fix"; then
-            append_note "$tag" "codex_failed" "Codex 生成失败" "$script_path" "" "" ""
-            die "Codex generation failed; see $codex_log"
+        log INFO "Iteration $iteration: Invoking Copilot (is_fix=$is_fix) output -> $script_path, log -> $copilot_log"
+        if ! run_copilot_generation "$prompt_file" "$script_path" "$copilot_log" "$iteration" "$is_fix"; then
+            append_note "$tag" "copilot_failed" "Copilot 生成失败" "$script_path" "" "" ""
+            die "Copilot generation failed; see $copilot_log"
         fi
-        log INFO "Iteration $iteration: Codex generation completed successfully"
+        log INFO "Iteration $iteration: Copilot generation completed successfully"
         if ! sanitize_r_script "$script_path"; then
             log WARN "Iteration $iteration: 脚本清理失败或文件缺失"
         fi

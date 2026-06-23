@@ -1,7 +1,7 @@
 # R 脚本智能生成与执行工作流 - 实现任务清单
 
 ## 项目目标
-构建基于 Codex 的 R 代码自动化生成与执行系统，核心流程为：**用户输入 → Codex 需求增强 → 代码生成 → 代码检查 → Docker 容器执行 → 结果验证 → 自动修复迭代**。
+构建基于 Copilot 的 R 代码自动化生成与执行系统，核心流程为：**用户输入 → Copilot 需求增强 → 代码生成 → 代码检查 → Docker 容器执行 → 结果验证 → 自动修复迭代**。
 
 ---
 
@@ -10,13 +10,13 @@
 ```
 用户输入(数据 + 原始需求)
     ↓
-Codex 需求增强(使用提示词模版)
+Copilot 需求增强(使用提示词模版)
     ↓
 生成增强需求文档(requirement_enhanced.md)
     ↓
 生成验收标准文档(acceptance_criteria.md)
     ↓
-Codex 生成 R 代码
+Copilot 生成 R 代码
     ↓
 代码静态检查(语法 + 最佳实践)
     ↓
@@ -26,9 +26,9 @@ Codex 生成 R 代码
     │         ↓                      │
     │ 执行 R 脚本                    │
     │         ↓                      │
-    │ 用Codex检查执行结果和对比验收标准  │
+    │ 用Copilot检查执行结果和对比验收标准 │
     │         ↓                      │
-    │ 如有错误 → Codex 分析并修复    │
+    │ 如有错误 → Copilot 分析并修复   │
     │         ↓                      │
     │ 判断：成功 OR 达到循环上限     │
     └────────────────────────────────┘
@@ -71,7 +71,7 @@ Codex 生成 R 代码
 
 ---
 
-## 第二阶段：Codex 需求增强模块
+## 第二阶段：Copilot 需求增强模块
 
 ### 2.1 需求增强提示词模版
 - [ ] 创建 `templates/requirement-enhancement-prompt.md`
@@ -99,14 +99,14 @@ Codex 生成 R 代码
 ### 2.3 需求增强脚本
 - [ ] 创建 `scripts/enhance-requirement.sh`
   - 输入：用户原始需求（`tasks/<TASK>/requirement_raw.md`）
-  - 调用 Codex，使用需求增强模版
+  - 调用 Copilot，使用需求增强模版
   - 输出：
     - `tasks/<TASK>/requirement_enhanced.md` - 增强需求文档
     - `tasks/<TASK>/acceptance_criteria.md` - 验收标准
   - **检查标准**：
     - 脚本可独立运行，参数清晰
     - 输出文档格式一致，易于后续解析
-    - 记录 Codex 调用日志到 `logs/enhancement.log`
+    - 记录 Copilot 调用日志到 `logs/enhancement.log`
 
 ---
 
@@ -137,7 +137,7 @@ Codex 生成 R 代码
   - 代码生成后立即执行检查
   - 如果检查失败，将检查报告附加到下一轮 prompt
   - **检查标准**：
-    - 检查报告格式适合 Codex 理解和修复
+    - 检查报告格式适合 Copilot 理解和修复
     - 严重错误（语法错误）直接触发重新生成，不进入容器执行
     - 警告级问题记录但不阻塞执行
 
@@ -159,14 +159,14 @@ Codex 生成 R 代码
 - [ ] 创建 `scripts/validate-result.sh`
   - 输入：执行日志（`logs/run_v<XX>.log`）、输出文件、验收标准
   - 验证逻辑：
-    - 调用Codex来检查输出是否符合验收标准
+    - 调用 Copilot 来检查输出是否符合验收标准
     - 脚本退出码 = 0
     - 输出文件存在且非空
     - 对比验收标准中的具体指标（文件行数、列名、数值范围等）
   - 输出：验证报告（`logs/validation_v<XX>.md`）
   - **检查标准**：
     - 验证失败时明确指出不符合的标准项
-    - 验证报告格式化，便于 Codex 分析
+    - 验证报告格式化，便于 Copilot 分析
     - 支持部分通过的情况（区分致命错误和可接受偏差）
 
 ### 4.3 自动修复循环
@@ -175,7 +175,7 @@ Codex 生成 R 代码
   - 失败时：
     - 收集检查报告、执行日志、验证报告
     - 生成修复 prompt：原始需求 + 代码 + 错误信息
-    - 调用 Codex 生成修正版本
+    - 调用 Copilot 生成修正版本
   - 循环终止条件：
     - 验证完全通过（SUCCESS）
     - 达到最大迭代次数（默认 5 次）
@@ -206,7 +206,7 @@ Codex 生成 R 代码
 ### 5.2 工作流编排
 - [ ] 实现阶段化执行
   - 阶段 1：需求增强（`enhance-requirement.sh`）
-  - 阶段 2：代码生成与检查（循环调用 Codex + `check-r-code.sh`）
+  - 阶段 2：代码生成与检查（循环调用 Copilot + `check-r-code.sh`）
   - 阶段 3：容器执行（调用 `docker-utils.sh`）
   - 阶段 4：结果验证（`validate-result.sh`）
   - 阶段 5：如失败，返回阶段 2（带错误上下文）
@@ -217,7 +217,7 @@ Codex 生成 R 代码
 
 ### 5.3 错误处理与报告
 - [ ] 完善异常处理
-  - 每个阶段的失败原因分类（配置错误/Codex 失败/执行失败/验证失败）
+  - 每个阶段的失败原因分类（配置错误/Copilot 失败/执行失败/验证失败）
   - 生成最终报告（`tasks/<TASK>/report.md`）
     - 包含：需求文档、迭代历史、成功/失败原因、关键日志摘要
   - **检查标准**：
@@ -232,7 +232,7 @@ Codex 生成 R 代码
 ### 6.1 配置文件设计
 - [ ] 创建 `config/default.yaml`
   - Docker 配置：镜像名称、资源限制、超时时间
-  - Codex 配置：模型名称、温度参数、最大 token 数
+  - Copilot 配置：模型名称、权限参数、输出格式
   - 验证配置：验收标准严格程度、容错阈值
   - **检查标准**：
     - YAML 格式规范，有注释说明
@@ -261,7 +261,7 @@ Codex 生成 R 代码
 - [ ] 设计扩展点
   - 自定义代码检查器（通过脚本接口）
   - 自定义验证器（通过配置文件）
-  - 自定义 Codex 调用方式（支持其他 AI 服务）
+  - 自定义 Copilot 调用方式（支持其他 AI 服务）
   - **检查标准**：
     - 扩展接口文档清晰
     - 示例插件可运行
@@ -337,7 +337,7 @@ r-sample/
 ├── tasks/
 │   └── <TASK_NAME>/
 │       ├── requirement_raw.md         # 用户原始需求
-│       ├── requirement_enhanced.md    # Codex 增强需求
+│       ├── requirement_enhanced.md    # Copilot 增强需求
 │       ├── acceptance_criteria.md     # 验收标准
 │       ├── script_v01.R ~ v05.R       # 迭代版本
 │       ├── script_final.R             # 最终脚本
@@ -345,7 +345,7 @@ r-sample/
 │       ├── output/                    # 脚本输出
 │       ├── logs/
 │       │   ├── enhancement.log        # 需求增强日志
-│       │   ├── codex_01.log ~ 05.log  # 代码生成日志
+│       │   ├── copilot_01.log ~ 05.log # 代码生成日志
 │       │   ├── code_check_01.md ~ 05.md  # 代码检查报告
 │       │   ├── run_01.log ~ 05.log    # 容器执行日志
 │       │   └── validation_01.md ~ 05.md  # 验证报告

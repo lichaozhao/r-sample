@@ -27,11 +27,13 @@ Required arguments:
 Optional arguments:
   -a, --artifact FILE      Additional artifact paths that必须存在 (repeatable)
   --report FILE            Validation report path (default: tasks/<task>/logs/validation_##.md)
-  --skip-codex             仅做本地存在性检查，跳过 Codex 核验
+  --skip-copilot           仅做本地存在性检查，跳过 Copilot 核验
   -h, --help               Show this message
 
 Environment:
-  CODEX_VALIDATE_CMD_TEMPLATE   Override Codex CLI command模板（默认: codex exec --output-last-message "$OUTPUT_CAPTURE" "$PROMPT_TEXT"）
+  COPILOT_VALIDATE_CMD_TEMPLATE Override Copilot CLI command模板（默认: copilot -p "$PROMPT_TEXT" -s --allow-all-tools）
+  COPILOT_CMD                   Copilot executable name/path (default: copilot)
+  COPILOT_COMMON_ARGS           Shared Copilot args (default: -s --allow-all-tools)
 USAGE
 }
 
@@ -41,7 +43,7 @@ TASK_NAME=""
 CRITERIA_PATH=""
 RUN_LOG=""
 REPORT_PATH=""
-SKIP_CODEX="false"
+SKIP_COPILOT="false"
 ARTIFACTS=()
 
 while [[ $# -gt 0 ]]; do
@@ -56,8 +58,8 @@ while [[ $# -gt 0 ]]; do
             ARTIFACTS+=("$2"); shift 2 ;;
         --report)
             REPORT_PATH="$2"; shift 2 ;;
-        --skip-codex)
-            SKIP_CODEX="true"; shift ;;
+        --skip-copilot)
+            SKIP_COPILOT="true"; shift ;;
         -h|--help)
             usage; exit 0 ;;
         *)
@@ -126,12 +128,12 @@ for artifact in "${ARTIFACTS[@]}"; do
     check_path "Artifact $artifact" "$artifact" any
 done
 
-CODEX_OUTPUT_FILE="$LOG_DIR/validation_codex.md"
-CODEX_LOG_FILE="$LOG_DIR/validation_codex_cli.log"
-CODEX_VERDICT="SKIPPED"
-CODEX_NOTE="Codex 未执行"
+COPILOT_OUTPUT_FILE="$LOG_DIR/validation_copilot.md"
+COPILOT_LOG_FILE="$LOG_DIR/validation_copilot_cli.log"
+COPILOT_VERDICT="SKIPPED"
+COPILOT_NOTE="Copilot 未执行"
 
-build_codex_prompt() {
+build_copilot_prompt() {
     local prompt
     read -r -d '' prompt <<EOF || true
 你是自动化验收助手。请操作当前仓库完成以下步骤：
@@ -148,46 +150,46 @@ EOF
     printf '%s' "$prompt"
 }
 
-run_codex_review() {
-    if [[ "$SKIP_CODEX" == "true" ]]; then
-        CODEX_NOTE="已通过 --skip-codex 跳过 Codex 验收"
+run_copilot_review() {
+    if [[ "$SKIP_COPILOT" == "true" ]]; then
+        COPILOT_NOTE="已通过 --skip-copilot 跳过 Copilot 验收"
         return 0
     fi
-    if ! command -v codex >/dev/null 2>&1; then
-        CODEX_VERDICT="ERROR"
-        CODEX_NOTE="codex 命令未找到，无法执行自动验收"
-        log_warn "$CODEX_NOTE"
+    if [[ -z "${COPILOT_VALIDATE_CMD_TEMPLATE:-}" ]] && ! command -v "${COPILOT_CMD:-copilot}" >/dev/null 2>&1; then
+        COPILOT_VERDICT="ERROR"
+        COPILOT_NOTE="${COPILOT_CMD:-copilot} 命令未找到，无法执行自动验收"
+        log_warn "$COPILOT_NOTE"
         return 1
     fi
     local prompt_text
-    prompt_text="$(build_codex_prompt)"
-    local default_cmd='codex exec --output-last-message "$OUTPUT_CAPTURE" "$PROMPT_TEXT"'
-    local template="${CODEX_VALIDATE_CMD_TEMPLATE:-$default_cmd}"
-    PROMPT_TEXT="$prompt_text" OUTPUT_CAPTURE="$CODEX_OUTPUT_FILE" TASK_DIR="$TASK_DIR" \
-        bash -c "$template" >"$CODEX_LOG_FILE" 2>&1 || {
-            CODEX_VERDICT="ERROR"
-            CODEX_NOTE="Codex 命令执行失败，日志: $CODEX_LOG_FILE"
+    prompt_text="$(build_copilot_prompt)"
+    local default_cmd='set -o pipefail; "${COPILOT_CMD:-copilot}" -p "$PROMPT_TEXT" ${COPILOT_COMMON_ARGS:--s --allow-all-tools} | tee "$OUTPUT_CAPTURE"'
+    local template="${COPILOT_VALIDATE_CMD_TEMPLATE:-$default_cmd}"
+    PROMPT_TEXT="$prompt_text" OUTPUT_CAPTURE="$COPILOT_OUTPUT_FILE" TASK_DIR="$TASK_DIR" \
+        bash -c "$template" >"$COPILOT_LOG_FILE" 2>&1 || {
+            COPILOT_VERDICT="ERROR"
+            COPILOT_NOTE="Copilot 命令执行失败，日志: $COPILOT_LOG_FILE"
             return 1
         }
     local verdict_line
-    if verdict_line=$(grep -m1 -E '^VERDICT:' "$CODEX_OUTPUT_FILE" 2>/dev/null); then
+    if verdict_line=$(grep -m1 -E '^VERDICT:' "$COPILOT_OUTPUT_FILE" 2>/dev/null); then
         local decision
         decision=$(sed -n 's/^VERDICT:[[:space:]]*//p' <<<"$verdict_line")
         case "$decision" in
             PASS|FAIL)
-                CODEX_VERDICT="$decision"
-                CODEX_NOTE="详见 $CODEX_OUTPUT_FILE"
+                COPILOT_VERDICT="$decision"
+                COPILOT_NOTE="详见 $COPILOT_OUTPUT_FILE"
                 [[ "$decision" == "PASS" ]] || return 1
                 return 0
                 ;;
         esac
     fi
-    CODEX_VERDICT="ERROR"
-    CODEX_NOTE="未能解析 Codex 输出中的 VERDICT，参见 $CODEX_OUTPUT_FILE"
+    COPILOT_VERDICT="ERROR"
+    COPILOT_NOTE="未能解析 Copilot 输出中的 VERDICT，参见 $COPILOT_OUTPUT_FILE"
     return 1
 }
 
-run_codex_review || ((++failures))
+run_copilot_review || ((++failures))
 
 {
     echo "# 验证报告"
@@ -199,14 +201,14 @@ run_codex_review || ((++failures))
         echo "- $summary"
     done
     echo
-    echo "## Codex 验收"
-    echo "- 状态: $CODEX_VERDICT"
-    echo "- 说明: $CODEX_NOTE"
-    echo "- CLI 日志: $CODEX_LOG_FILE"
-    echo "- Codex 输出: $CODEX_OUTPUT_FILE"
-    if [[ -f "$CODEX_OUTPUT_FILE" ]]; then
+    echo "## Copilot 验收"
+    echo "- 状态: $COPILOT_VERDICT"
+    echo "- 说明: $COPILOT_NOTE"
+    echo "- CLI 日志: $COPILOT_LOG_FILE"
+    echo "- Copilot 输出: $COPILOT_OUTPUT_FILE"
+    if [[ -f "$COPILOT_OUTPUT_FILE" ]]; then
         echo
-        cat "$CODEX_OUTPUT_FILE"
+        cat "$COPILOT_OUTPUT_FILE"
     fi
 } >"$REPORT_PATH"
 

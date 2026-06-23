@@ -31,8 +31,10 @@ Optional arguments:
   -h, --help                  Show this help message
 
 Environment variables:
-  CODEX_ENHANCE_CMD_TEMPLATE  Command template for requirement增强 (default: codex exec --output-last-message ...)
-  CODEX_CRITERIA_CMD_TEMPLATE Command template for验收标准 (default: same as above)
+  COPILOT_ENHANCE_CMD_TEMPLATE  Command template for requirement增强 (default: copilot -p ... -s --allow-all-tools)
+  COPILOT_CRITERIA_CMD_TEMPLATE Command template for验收标准 (default: same as above)
+  COPILOT_CMD                   Copilot executable name/path (default: copilot)
+  COPILOT_COMMON_ARGS           Shared Copilot args (default: -s --allow-all-tools)
 USAGE
 }
 
@@ -52,7 +54,7 @@ pathlib.Path(sys.argv[4]).write_text(tmpl.replace(placeholder, content))
 PY
 }
 
-run_codex() {
+run_copilot() {
     local template="$1" prompt_file="$2" output_file="$3" log_file="$4" stage="$5"
     local status=0
     PROMPT_FILE="$prompt_file" OUTPUT_FILE="$output_file" STAGE="$stage" TASK_DIR="$TASK_DIR" \
@@ -124,20 +126,20 @@ CRITERIA_PROMPT="$tmp_dir/criteria_prompt.md"
 
 render_template "$ENHANCE_TEMPLATE" '{{REQUIREMENT_RAW}}' "$RAW_PATH" "$ENHANCE_PROMPT"
 
-default_codex_cmd='codex exec --output-last-message "$OUTPUT_FILE" < "$PROMPT_FILE"'
-ENHANCE_CMD="${CODEX_ENHANCE_CMD_TEMPLATE:-$default_codex_cmd}"
-CRITERIA_CMD="${CODEX_CRITERIA_CMD_TEMPLATE:-$default_codex_cmd}"
+default_copilot_cmd='set -o pipefail; "${COPILOT_CMD:-copilot}" -p "$(cat "$PROMPT_FILE")" ${COPILOT_COMMON_ARGS:--s --allow-all-tools} | tee "$OUTPUT_FILE"'
+ENHANCE_CMD="${COPILOT_ENHANCE_CMD_TEMPLATE:-$default_copilot_cmd}"
+CRITERIA_CMD="${COPILOT_CRITERIA_CMD_TEMPLATE:-$default_copilot_cmd}"
 
 log_info "[enhance] Generating enhanced requirement for task '$TASK_NAME'"
-if ! run_codex "$ENHANCE_CMD" "$ENHANCE_PROMPT" "$ENHANCED_PATH" "$LOG_PATH" enhance; then
-    echo "error: Codex enhancement command failed; check $LOG_PATH" >&2
+if ! run_copilot "$ENHANCE_CMD" "$ENHANCE_PROMPT" "$ENHANCED_PATH" "$LOG_PATH" enhance; then
+    echo "error: Copilot enhancement command failed; check $LOG_PATH" >&2
     exit 1
 fi
 
 render_template "$CRITERIA_TEMPLATE" '{{REQUIREMENT_ENHANCED}}' "$ENHANCED_PATH" "$CRITERIA_PROMPT"
 log_info "[criteria] Generating acceptance criteria"
-if ! run_codex "$CRITERIA_CMD" "$CRITERIA_PROMPT" "$CRITERIA_PATH" "$LOG_PATH" criteria; then
-    echo "error: Codex criteria command failed; check $LOG_PATH" >&2
+if ! run_copilot "$CRITERIA_CMD" "$CRITERIA_PROMPT" "$CRITERIA_PATH" "$LOG_PATH" criteria; then
+    echo "error: Copilot criteria command failed; check $LOG_PATH" >&2
     exit 1
 fi
 

@@ -8,7 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 DOCKER_DIR="$REPO_ROOT/docker"
 DOCKERFILE="$DOCKER_DIR/Dockerfile.r-runner"
-DEFAULT_IMAGE_TAG=${R_WORKFLOW_IMAGE:-codex-r-runner:latest}
+DEFAULT_IMAGE_TAG=${R_WORKFLOW_IMAGE:-copilot-r-runner:latest}
 DOCKER_BIN=${DOCKER_BIN:-docker}
 SCRIPT_NAME="docker-utils.sh"
 COLOR_BANNER="\033[1;35m"
@@ -64,7 +64,7 @@ run_r_in_container() {
     local script_path="$1"
     local task_dir="$2"
     local image_tag="${3:-$DEFAULT_IMAGE_TAG}"
-    local container_name="${4:-codex-r-runner-$(date +%s)}"
+    local container_name="${4:-copilot-r-runner-$(date +%s)}"
 
     if [[ ! -f "$script_path" ]]; then
         log ERROR "Script '$script_path' does not exist"
@@ -128,7 +128,7 @@ Docker utility helper
 
 Commands:
   check                Ensure Docker daemon is reachable
-  build [TAG]          Build the R runner image (default tag: codex-r-runner:latest)
+  build [TAG]          Build the R runner image (default tag: copilot-r-runner:latest)
   run SCRIPT TASK_DIR [IMAGE] [CONTAINER]
                        Run the provided script inside the Docker image using the task directory mount
 USAGE

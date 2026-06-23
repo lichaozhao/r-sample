@@ -4,8 +4,8 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.r-runner
-    image: codex-r-runner:latest
-    container_name: codex-r-runner
+    image: copilot-r-runner:latest
+    container_name: copilot-r-runner
     working_dir: /workspace
     volumes:
       - ../tasks:/workspace/tasks

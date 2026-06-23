@@ -1,3 +1,7 @@
 tasks/*
 analysis/*
 config/*
+.github/* 
+tmp
+.RData
+.Rhistory
