@@ -6,3 +6,4 @@ Replicate the swimmer plot as attached in R. You may want to create a dummy data
 
 ## 实验2 
 
+please reproduce this repo. 
